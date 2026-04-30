@@ -1,6 +1,52 @@
 import { store } from './store.js';
 import { extractTasksFromText } from './utils/api.js';
 
+function generateSummary(tasks, subjects) {
+  const now = new Date();
+  const weekEnd = new Date();
+  weekEnd.setDate(now.getDate() + 7);
+
+  let todayCount = 0;
+  let weekCount = 0;
+  let subjectCount = {};
+
+  tasks.forEach(t => {
+    if (t.archived || t.status === 'Done' || !t.due_at) return;
+
+    const d = new Date(t.due_at);
+
+    // today
+    if (d.toDateString() === now.toDateString()) {
+      todayCount++;
+    }
+
+    // this week
+    if (d >= now && d <= weekEnd) {
+      weekCount++;
+    }
+
+    const sub = subjects.find(s => s.id === t.subject_id);
+    const name = sub ? sub.name : 'General';
+    subjectCount[name] = (subjectCount[name] || 0) + 1;
+  });
+
+  const topSubject = Object.keys(subjectCount).length
+    ? Object.keys(subjectCount).reduce((a, b) =>
+        subjectCount[a] > subjectCount[b] ? a : b
+      )
+    : 'no specific subject';
+
+  return `
+    <strong>📅 Daily</strong><br>
+    Today you have <b>${todayCount}</b> task(s).<br>
+    Focus on <b>${topSubject}</b>.<br><br>
+
+    <strong>📊 Weekly</strong><br>
+    This week you have <b>${weekCount}</b> task(s).<br>
+    Most work is in <b>${topSubject}</b>.
+  `;
+}
+
 let currentMonthDate = new Date();
 let selectedDate = null;
 let currentView = 'calendar'; // 'calendar', 'all-tasks', 'archived'
@@ -233,6 +279,12 @@ function renderTasks() {
       store.markPendingTasksForDateCompleted(selectedDate);
     });
   }
+}
+
+
+const summaryBox = document.getElementById('summary-box');
+if (summaryBox) {
+  summaryBox.innerHTML = generateSummary(store.tasks, store.subjects);
 }
 
 function renderCalendar() {

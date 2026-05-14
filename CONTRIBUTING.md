@@ -1,10 +1,10 @@
 # Contributing to StudyPlan 📚
-Thank you for your interest in contributing to **StudyPlan** — an application designed to automatically organize tasks, schedules, and study plans. We welcome contributions from the community, especially **GSSoC contributors**!
+Thank you for your interest in contributing to **StudyPlan** — an application designed to automatically organize tasks, schedules, and study plans. We welcome contributions from the community, especially **GSSoC/NSoC contributors**!
 
 ---
 
 ## 🗺️ Table of Contents
-- [GSSoC Contributors — Start Here](#-gssoc-contributors--start-here)
+- [GSSoC/NSoC Contributors — Start Here](#-gssocnsoc-contributors--start-here)
 - [Getting Started](#-getting-started)
 - [System Architecture](#-system-architecture)
 - [Commit Message Format](#-commit-message-format)

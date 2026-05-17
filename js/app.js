@@ -1076,3 +1076,77 @@ addItemsBtn.addEventListener('click', () => {
 downloadBtn.addEventListener('click', () => {
   downloadData();
 });
+
+const fileInput = document.getElementById('file-input');
+const dropZone = document.getElementById('drop-zone');
+
+// 1. Handle File Selection via File Explorer Browsing
+if (fileInput) {
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) handleFileContent(file);
+  });
+}
+
+// 2. Handle Drag & Drop Events with proper overrides
+if (dropZone) {
+  // Prevent default behavior for all drag events to avoid browser navigation
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    }, false);
+  });
+
+  // Highlight drop zone when item is dragged over
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropZone.addEventListener(eventName, () => {
+      dropZone.classList.add('paste-zone--dragover');
+    }, false);
+  });
+
+  // Remove highlight when item leaves or is dropped
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, () => {
+      dropZone.classList.remove('paste-zone--dragover');
+    }, false);
+  });
+
+  // 3. Handle the File Drop Event correctly
+  dropZone.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    if (dt && dt.files.length > 0) {
+      const file = dt.files[0];
+      handleFileContent(file);
+    }
+  });
+}
+
+// 4. File Reader Processor Function
+function handleFileContent(file) {
+  const allowedExtensions = ['txt', 'md', 'json'];
+  const fileExtension = file.name.split('.').pop().toLowerCase();
+
+  // Validate file extension type
+  if (!allowedExtensions.includes(fileExtension)) {
+    alert('Invalid file format. Please upload a .txt, .md, or .json file.');
+    return;
+  }
+
+  const reader = new FileReader();
+  
+  reader.onload = (e) => {
+    const pasteInput = document.getElementById('paste-input');
+    if (pasteInput) {
+      pasteInput.value = e.target.result;
+      
+      alert(`Loaded "${file.name}" successfully! Click "Extract with AI" to find your tasks.`);
+    }
+  };
+
+  reader.onerror = () => {
+    alert('Error reading file content. Please try again.');
+  };
+
+  reader.readAsText(file);
+}

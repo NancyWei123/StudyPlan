@@ -28,20 +28,32 @@ function initDb() {
       archived INTEGER DEFAULT 0,
       estimated_duration INTEGER,
       is_estimated_duration_min BOOLEAN,
+      labels TEXT DEFAULT '[]',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (subject_id) REFERENCES subjects(id)
     )`);
 
-    db.all('PRAGMA table_info(tasks)', (err, columns) => {
-      if (err) return;
-      const columnNames = columns.map(column => column.name);
-      if (!columnNames.includes('estimated_duration')) {
-        db.run('ALTER TABLE tasks ADD COLUMN estimated_duration INTEGER');
-      }
-      if (!columnNames.includes('is_estimated_duration_min')) {
-        db.run('ALTER TABLE tasks ADD COLUMN is_estimated_duration_min BOOLEAN');
-      }
-    });
+db.all("PRAGMA table_info(tasks)", (err, rows) => {
+  if (err) return;
+
+  const columnNames = rows.map((row) => row.name);
+
+  // Estimated duration columns
+  if (!columnNames.includes("estimated_duration")) {
+    db.run("ALTER TABLE tasks ADD COLUMN estimated_duration INTEGER");
+  }
+
+  if (!columnNames.includes("is_estimated_duration_min")) {
+    db.run(
+      "ALTER TABLE tasks ADD COLUMN is_estimated_duration_min BOOLEAN"
+    );
+  }
+
+  // Labels column
+  if (!columnNames.includes("labels")) {
+    db.run("ALTER TABLE tasks ADD COLUMN labels TEXT DEFAULT '[]'");
+  }
+});
 
     // Pre-populate some subjects if empty
     db.get('SELECT COUNT(*) as count FROM subjects', (err, row) => {

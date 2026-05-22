@@ -177,10 +177,21 @@ function nlpTaskScore(seg) {
 }
 
 function nlpCleanTitle(seg) {
-  return seg
+  const labelMatch = seg.match(/#[\w-]+/g);
+  let cleaned = seg
     .replace(/^(please|kindly|remember to|don't forget to|make sure to)\s+/i, '')
     .replace(/\s+(by|before|due|on|at)\s+.*/i, '')
     .trim().substring(0, 80);
+    
+  if (labelMatch) {
+    // Re-append labels so frontend can still extract them
+    labelMatch.forEach(l => {
+      if (!cleaned.includes(l)) {
+        cleaned += ' ' + l;
+      }
+    });
+  }
+  return cleaned;
 }
 
 function nlpFallbackDate() {
@@ -274,6 +285,13 @@ app.post('/api/subjects', (req, res) => {
 app.get('/api/tasks', (req, res) => {
   db.all('SELECT * FROM tasks ORDER BY due_at ASC', (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
+    rows.forEach(r => {
+      try {
+        r.labels = JSON.parse(r.labels || '[]');
+      } catch(e) {
+        r.labels = [];
+      }
+    });
     res.json(rows);
   });
 });
@@ -292,8 +310,9 @@ app.post('/api/tasks', (req, res) => {
     let errors = [];
 
     const stmt = db.prepare(`INSERT INTO tasks 
-      (id, subject_id, title, due_at, status, priority, confidence_score, notes, estimated_duration, is_estimated_duration_min) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      (id, subject_id, title, due_at, status, priority, confidence_score, notes, estimated_duration, is_estimated_duration_min, labels) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+
 
     let pending = tasks.length;
 
@@ -332,6 +351,7 @@ app.post('/api/tasks', (req, res) => {
               t.notes || '',
               Number.isFinite(Number(t.estimated_duration)) ? Number(t.estimated_duration) : null,
               t.is_estimated_duration_min === 0 ? 0 : 1,
+              typeof t.labels === 'string' ? t.labels : JSON.stringify(t.labels || []),
               function (insertErr) {
                 if (insertErr) {
                   errors.push({ task: t, error: insertErr.message });
@@ -373,7 +393,9 @@ app.post('/api/tasks', (req, res) => {
 
 // ================= UPDATE =================
 app.put('/api/tasks/:id', (req, res) => {
-  const { status, archived, title, subject_id, due_at, notes, priority, estimated_duration, is_estimated_duration_min } = req.body;
+
+  const { status, archived, title, subject_id, due_at, notes, priority, estimated_duration, is_estimated_duration_min,labels } = req.body;
+
 
   let query = 'UPDATE tasks SET ';
   const params = [];
@@ -388,6 +410,7 @@ app.put('/api/tasks/:id', (req, res) => {
   if (priority !== undefined) { updates.push('priority = ?'); params.push(priority); }
   if (estimated_duration !== undefined) { updates.push('estimated_duration = ?'); params.push(Number.isFinite(Number(estimated_duration)) ? Number(estimated_duration) : null); }
   if (is_estimated_duration_min !== undefined) { updates.push('is_estimated_duration_min = ?'); params.push(is_estimated_duration_min === 0 ? 0 : 1); }
+  if (labels !== undefined) { updates.push('labels = ?'); params.push(typeof labels === 'string' ? labels : JSON.stringify(labels)); }
 
   if (updates.length === 0) {
     return res.status(400).json({ error: 'No fields to update' });
@@ -425,6 +448,7 @@ app.post('/api/extract', async (req, res) => {
 You are an AI study planner assistant. Extract ALL tasks and deadlines from the text below.
 Return ONLY a raw JSON array (no markdown, no backticks, no explanation).
 Each object must have: title (string), subject_name (string), due_at (ISO 8601 datetime), notes (string), confidence_score (number 0-100), priority ("low"|"medium"|"high"), icon (emoji).
+IMPORTANT: Do not strip hashtags from the task description! If the original text contains hashtag labels (e.g. #urgent, #Group), you MUST include them at the end of the 'title' field (e.g. 'Read chapter 1 #urgent').
 
 Text: "${text}"
 `;

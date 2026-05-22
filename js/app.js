@@ -574,11 +574,32 @@ function renderTasks() {
       ? `<div class="tasks-empty-state">No tasks for this day yet.</div>`
       : '';
 
+    const totalMinutes = [...dueSoon, ...completed].reduce((acc, t) => acc + (Number(t.estimated_duration) || 0), 0);
+    console.log('[Daily Study Time] Calendar view with selected date:', selectedDate);
+    console.log('[Daily Study Time] Pending tasks:', dueSoon.length, 'Completed tasks:', completed.length);
+    console.log('[Daily Study Time] Task durations:', [...dueSoon, ...completed].map(t => ({ title: t.title, estimated_duration: t.estimated_duration })));
+    console.log('[Daily Study Time] Total minutes calculated:', totalMinutes);
+    const studyTimeEl = document.getElementById('daily-study-time');
+    const studyTimeValueEl = document.getElementById('daily-study-time-value');
+    if (studyTimeEl && studyTimeValueEl) {
+      studyTimeEl.style.display = 'flex';
+      studyTimeValueEl.textContent = formatDuration(totalMinutes);
+      console.log('[Daily Study Time] Banner shown with value:', formatDuration(totalMinutes));
+    } else {
+      console.log('[Daily Study Time] Banner elements not found');
+    }
+
     tasksSection.innerHTML = actionBar +
                              renderGroup(`Tasks for ${selStr}`, dueSoon, 'var(--color-text-primary)') +
                              renderGroup('Completed', completed, 'var(--color-text-tertiary)') +
                              emptyState;
   } else {
+    console.log('[Daily Study Time] Hiding banner - currentView:', currentView, 'selectedDate:', selectedDate);
+    const studyTimeEl = document.getElementById('daily-study-time');
+    if (studyTimeEl) {
+      studyTimeEl.style.display = 'none';
+    }
+
     const actionBar = currentView === 'archived' ? '' : `<div class="tasks-actions-bar">
            <button id="mark-all-pending-btn" class="task-action-btn" ${pending.length === 0 ? 'disabled' : ''}>Mark all pending completed (${pending.length})</button>
          </div>`;

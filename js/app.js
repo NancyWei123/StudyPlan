@@ -2,6 +2,7 @@ import { store } from './store.js';
 import { extractTasksFromText } from './utils/api.js';
 import { initGlobalErrorBoundary } from './utils/errorBoundary.js';
 import { analyzeWorkload } from './utils/scheduler.js';
+import { Toast } from './utils/toast.js';
 
 initGlobalErrorBoundary();
 
@@ -95,6 +96,7 @@ const extractBtn = document.getElementById('extract-btn');
 const clearBtn = document.getElementById('clear-btn');
 const addItemsBtn = document.getElementById('add-btn');
 const downloadBtn = document.getElementById('download-btn');
+const calendarDownloadBtn = document.getElementById('calendar-download-btn');
 const newTaskBtn = document.getElementById('add-task-btn');
 const labelFilterSelect = document.getElementById('label-filter');
 
@@ -251,7 +253,7 @@ function startTimer() {
     if (timeLeft === 0) {
       clearInterval(timerInterval);
       timerInterval = null;
-      alert('Focus session complete!');
+      Toast.show('Focus session complete!', 'success');
       resetTimer();
     }
   }, 1000);
@@ -423,7 +425,31 @@ async function downloadData() {
 
     } catch (error) {
         console.error(error);
-        alert('Failed to download data');
+        Toast.show('Failed to download data', 'error');
+    }
+}
+
+async function downloadCalendar() {
+    try {
+        const response = await fetch('/api/download/calendar');
+
+        if (!response.ok) {
+            throw new Error('Failed to export calendar');
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'studyplan_calendar.ics';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 100);
+
+    } catch (error) {
+        console.error(error);
+        alert('Failed to export calendar');
     }
 }
 
@@ -525,8 +551,10 @@ function renderTasks() {
       
     items.forEach(t => {
       const sub = subjects.find(s => s.id === t.subject_id) || subjects[0];
-      const isUrgent = t.priority === 'high' && title === '⚠ Due soon';
       const isDone = t.status === 'Done';
+      const isHighPriority = t.priority === 'high';
+      const isOverdue = !isDone && t.due_at && new Date(t.due_at) < now;
+      const isUrgent = isHighPriority && title === '⚠ Due soon';
       
       let pillClass = '';
       if(sub.short_code === 'CS') pillClass = 'pill-blue';
@@ -547,7 +575,7 @@ function renderTasks() {
           : '';
         
         html += `
-          <div class="task-item" style="display:block; padding:12px; cursor:default;" data-id="${t.id}">
+          <div class="task-item editing" style="display:block; padding:12px; cursor:default;" data-id="${t.id}">
             <label style="display:block; font-size:10px; font-weight:700; color:var(--color-text-tertiary); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:4px;">Subject</label>
             <select class="board-edit-subject edit-field" style="width:100%; margin-bottom: 12px; font-size:12px; padding:4px; border: 1px solid var(--color-border-secondary); border-radius: 4px; background: var(--color-background-primary); color: var(--color-text-primary);">
               ${subjectOptions}
@@ -585,12 +613,13 @@ function renderTasks() {
           </div>
         `;
       } else {
-        const archiveBtn = !t.archived 
-          ? `<button class="task-btn edit-task-btn" data-id="${t.id}" title="Edit">✏️ Edit</button>
-             <button class="task-btn archive-task-btn" data-id="${t.id}" title="Archive">Archive</button>`
-          : `<button class="task-btn edit-task-btn" data-id="${t.id}" title="Edit">✏️ Edit</button>
+        const actionButtons = !t.archived 
+          ? `<button class="task-btn edit-task-btn" data-id="${t.id}" title="Edit">Edit</button>
+             <button class="task-btn archive-task-btn" data-id="${t.id}" title="Archive">Archive</button>
+             <button class="task-btn delete-task-btn" data-id="${t.id}" title="Delete">Delete</button>`
+          : `<button class="task-btn edit-task-btn" data-id="${t.id}" title="Edit">Edit</button>
              <button class="task-btn task-btn-info restore-task-btn" data-id="${t.id}" title="Restore">Restore</button>
-             <button class="task-btn task-btn-danger delete-task-btn" data-id="${t.id}" title="Permanent Delete">Delete</button>`;
+             <button class="task-btn task-btn-danger delete-task-btn" data-id="${t.id}" title="Delete">Delete</button>`;
 
         let labelsHtml = '';
         if (t.labels && Array.isArray(t.labels)) {
@@ -598,18 +627,18 @@ function renderTasks() {
         }
 
         html += `
-          <div class="task-item ${isUrgent ? 'urgent' : ''} ${isDone ? 'done' : ''}" data-id="${t.id}">
+          <div class="task-item ${isUrgent ? 'urgent' : ''} ${isHighPriority ? 'high-priority' : ''} ${isOverdue ? 'overdue' : ''} ${isDone ? 'done' : ''}" data-id="${t.id}">
             <div class="task-check ${isDone ? 'done' : ''}"></div>
             <div class="task-info">
               <div class="task-name">${t.title}</div>
               <div class="task-meta">
-                <span class="task-pill ${isDone ? 'pill-green' : (isUrgent ? 'pill-red' : 'pill-amber')}">${isDone ? 'Done' : 'Due ' + formatDate(t.due_at)}</span>
+                <span class="task-pill ${isDone ? 'pill-green' : (isOverdue || isHighPriority ? 'pill-red' : 'pill-amber')}">${isDone ? 'Done' : 'Due ' + formatDate(t.due_at)}</span>
                 <span class="task-pill ${pillClass}">${sub.short_code}</span>
                 ${labelsHtml}
               </div>
             </div>
             <div class="task-actions">
-              ${archiveBtn}
+              ${actionButtons}
             </div>
           </div>
         `;
@@ -627,7 +656,15 @@ function renderTasks() {
          </div>`;
 
     const emptyState = dueSoon.length === 0 && completed.length === 0
-      ? `<div class="tasks-empty-state">No tasks for this day yet.</div>`
+      ? `<div class="tasks-empty-state">
+           <div class="empty-state-icon">📅</div>
+           <div class="empty-state-title">No tasks for today</div>
+           <div class="empty-state-text">Your schedule is looking clear! Use this time to rest or start planning ahead.</div>
+           <button class="empty-state-cta" id="empty-state-add-btn">
+             <svg width="14" height="14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+             Add your first task
+           </button>
+         </div>`
       : '';
 
     const totalMinutes = [...dueSoon, ...completed].reduce((acc, t) => acc + (Number(t.estimated_duration) || 0), 0);
@@ -661,17 +698,38 @@ function renderTasks() {
          </div>`;
 
     const titlePrefix = currentView === 'archived' ? 'Archived: ' : '';
-    const emptyStateText = currentView === 'archived' ? 'No archived tasks.' : 'No tasks yet. Add tasks from Smart Paste to get started.';
+    const emptyStateTitle = currentView === 'archived' ? 'No archived tasks' : 'Start your journey';
+    const emptyStateText = currentView === 'archived' 
+      ? 'Your archive is empty. Completed tasks you archive will appear here.' 
+      : 'No tasks yet! Start planning your study schedule and stay on top of your goals.';
+    const emptyStateIcon = currentView === 'archived' ? '📦' : '✨';
 
     const emptyState = dueSoon.length === 0 && thisWeek.length === 0 && completed.length === 0
-      ? `<div class="tasks-empty-state">${emptyStateText}</div>`
+      ? `<div class="tasks-empty-state">
+           <div class="empty-state-icon">${emptyStateIcon}</div>
+           <div class="empty-state-title">${emptyStateTitle}</div>
+           <div class="empty-state-text">${emptyStateText}</div>
+           ${currentView !== 'archived' ? `
+           <button class="empty-state-cta" id="empty-state-add-btn">
+             <svg width="14" height="14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+             Add your first task
+           </button>` : ''}
+         </div>`
       : '';
 
     tasksSection.innerHTML = actionBar +
-                             renderGroup(titlePrefix + '⚠ Due soon', dueSoon, 'var(--color-text-danger)', true) +
-                             renderGroup(titlePrefix + 'This week', thisWeek, 'var(--color-text-secondary)', true) +
+                             renderGroup(titlePrefix + '⚠ Due soon', dueSoon, 'var(--color-text-danger)', true)
+                             + renderGroup(titlePrefix + 'This week', thisWeek, 'var(--color-text-secondary)', true) +
                              renderGroup(titlePrefix + 'Completed', completed, 'var(--color-text-tertiary)') +
                              emptyState;
+  }
+
+  // Bind CTA button in empty state
+  const emptyStateAddBtn = document.getElementById('empty-state-add-btn');
+  if (emptyStateAddBtn) {
+    emptyStateAddBtn.addEventListener('click', () => {
+      document.getElementById('add-task-btn')?.click();
+    });
   }
                            
   document.querySelectorAll('.task-item').forEach(el => {
@@ -1104,7 +1162,7 @@ document.addEventListener('DOMContentLoaded', () => {
 newTaskBtn.addEventListener('click', () => {
   
   if (!store.subjects || store.subjects.length === 0) {
-    alert('Subjects are still loading. Please try again in a moment.');
+    Toast.show('Subjects are still loading. Please try again in a moment.', 'warning');
     return;
   }
 
@@ -1164,6 +1222,15 @@ newTaskSave.addEventListener('click', async () => {
     return;
   }
 
+  if (!dateVal) {
+  alert('Please enter a deadline');
+  return;
+}
+
+if (!subject_id) {
+  alert('Please select a subject');
+  return;
+}
   const { cleanTitle, labels } = extractLabels(rawTitle);
   const due_at = dateVal ? new Date(dateVal).toISOString() : '';
 
@@ -1197,6 +1264,11 @@ addItemsBtn.addEventListener('click', () => {
 });
 });
 
+// Ensures the button is hidden on initial page load if the textarea is empty
+if (pasteInput.value.trim() === "") {
+    clearBtn.style.display = 'none';
+}
+
 extractBtn.addEventListener('click', async () => {
   const text = pasteInput.value;
   if (!text.trim()) return;
@@ -1212,11 +1284,52 @@ extractBtn.addEventListener('click', async () => {
   store.setExtracted(items);
 });
 
+// Wipes the text, clears the store, hides the button, and refocuses the cursor
 clearBtn.addEventListener('click', () => {
-  pasteInput.value = '';
-  store.clearExtracted();
+    pasteInput.value = '';
+    store.clearExtracted();
+    clearBtn.style.display = 'none'; // Hides the clear button instantly
+    pasteInput.focus();              // Puts the typing cursor back in the box
+});
+
+// Listens to typing/pasting to show or hide the button dynamically
+pasteInput.addEventListener('input', () => {
+    if (pasteInput.value.trim().length > 0) {
+        clearBtn.style.display = 'block'; 
+    } else {
+        clearBtn.style.display = 'none';
+    }
 });
 
 downloadBtn.addEventListener('click', () => {
   downloadData();
+});
+
+// Motivational Quotes
+const quotes = [
+  "Small Progress is still Progress",
+  "Focus on being productive instead of busy",
+  "The secret of getting ahead is getting started",
+  "Strive for progress, not perfection",
+  "Don't wait for opportunity. Create it.",
+  "Success is the sum of small efforts repeated daily",
+  "Time is not refundable, use it with intention.",
+  "Sometimes, getting it done is better than perfect.",
+  "Believe you can and you're halfway there.",
+  "Arise, awake, and stop not till the goal is reached."
+];
+
+const quoteEl = document.getElementById('motivational-quotes');
+if (quoteEl) {
+  const today = new Date();
+  const seed = today.toDateString();
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash % quotes.length);
+  quoteEl.textContent = `${quotes[index]}`;
+}
+calendarDownloadBtn.addEventListener('click', () => {
+  downloadCalendar();
 });

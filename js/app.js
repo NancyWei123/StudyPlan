@@ -1202,11 +1202,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  document.getElementById('cal-prev').addEventListener('click', () => {
-    currentMonthDate.setMonth(currentMonthDate.getMonth() - 1);
-    renderCalendar();
-  });
-
   document.getElementById('cal-next').addEventListener('click', () => {
     currentMonthDate.setMonth(currentMonthDate.getMonth() + 1);
     renderCalendar();
